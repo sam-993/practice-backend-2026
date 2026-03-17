@@ -2,6 +2,17 @@ from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, Date
 from sqlalchemy.orm import relationship, DeclarativeBase
 from datetime import datetime
 
+class Review(Base):
+    __tablename__ = "reviews"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    court_id = Column(Integer, ForeignKey("courts.id"))
+    rating = Column(Integer) # от 1 до 5
+    comment = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    court = relationship("Court", back_populates="reviews")
+
 class Base(DeclarativeBase):
     pass
 

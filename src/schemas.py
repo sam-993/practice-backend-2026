@@ -2,6 +2,22 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
 
+class ReviewCreate(BaseModel):
+    court_id: int
+    rating: int
+    comment: str
+
+class ReviewOut(ReviewCreate):
+    id: int
+    user_id: int
+    class Config:
+        from_attributes = True
+
+class CourtOut(CourtBase):
+    id: int
+    avg_rating: Optional[float] = 0.0 
+    class Config:
+        from_attributes = True
 class BookingBase(BaseModel):
     court_id: int
     start_time: datetime

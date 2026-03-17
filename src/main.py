@@ -4,6 +4,74 @@ from fastapi.security import OAuth2PasswordRequestForm
 from src.database import engine, get_db
 from src import models, schemas, auth
 from sqlalchemy import and_, or_
+from sqlalchemy import func
+
+@app.get("/courts/search", response_model=list[schemas.CourtOut])
+def search_available_courts(
+    start: datetime, 
+    end: datetime, 
+    court_type: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    occupied_courts = db.query(models.Booking.court_id).filter(
+        and_(
+            models.Booking.start_time < end,
+            models.Booking.end_time > start
+        )
+    ).all()
+    occupied_ids = [c[0] for c in occupied_courts]
+
+    query = db.query(models.Court).filter(~models.Court.id.in_(occupied_ids))
+    
+    if court_type:
+        query = query.filter(models.Court.court_type == court_type)
+        
+    return query.all()
+
+
+@app.get("/courts/{court_id}/schedule")
+def get_court_schedule(court_id: int, date: datetime, db: Session = Depends(get_db)):
+    bookings = db.query(models.Booking).filter(
+        models.Booking.court_id == court_id,
+        func.date(models.Booking.start_time) == date.date()
+    ).all()
+    return bookings
+
+
+@app.post("/reviews", response_model=schemas.ReviewOut)
+def leave_review(
+    review: schemas.ReviewCreate,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    past_booking = db.query(models.Booking).filter(
+        models.Booking.user_id == current_user.id,
+        models.Booking.court_id == review.court_id,
+        models.Booking.end_time < datetime.utcnow()
+    ).first()
+
+    if not past_booking:
+        raise HTTPException(
+            status_code=400, 
+            detail="You can only review courts you have actually used in the past"
+        )
+
+    new_review = models.Review(**review.model_dump(), user_id=current_user.id)
+    db.add(new_review)
+    db.commit()
+    db.refresh(new_review)
+    return new_review
+
+
+@app.get("/courts/paged", response_model=list[schemas.CourtOut])
+def get_courts_paged(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
+    courts = db.query(models.Court).offset(skip).limit(limit).all()
+    
+    for court in courts:
+        avg = db.query(func.avg(models.Review.rating)).filter(models.Review.court_id == court.id).scalar()
+        court.avg_rating = avg or 0.0
+        
+    return courts
 
 @app.post("/bookings", response_model=schemas.BookingOut)
 def create_booking(
