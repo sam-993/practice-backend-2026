@@ -6,22 +6,21 @@ class Base(DeclarativeBase):
     pass
 
 class User(Base):
-    tablename = "users"
+    __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String)
-    role = Column(String, default="user") 
-
+    role = Column(String, default="user")
     bookings = relationship("Booking", back_populates="owner")
 
 class Court(Base):
-    tablename = "courts"
+    __tablename__ = "courts"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
-    court_type = Column(String, nullable=False)
+    court_type = Column(String, nullable=False) # Теннис, футбол и т.д.
     description = Column(String)
     price_per_hour = Column(Float, nullable=False)
     is_active = Column(Boolean, default=True)
@@ -29,7 +28,7 @@ class Court(Base):
     bookings = relationship("Booking", back_populates="court")
 
 class Booking(Base):
-    tablename = "bookings"
+    __tablename__ = "bookings"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
