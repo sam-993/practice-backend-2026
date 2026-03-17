@@ -3,11 +3,70 @@ from sqlalchemy.orm import Session
 from fastapi.security import OAuth2PasswordRequestForm
 from src.database import engine, get_db
 from src import models, schemas, auth
+from sqlalchemy import and_, or_
+
+@app.post("/bookings", response_model=schemas.BookingOut)
+def create_booking(
+    booking: schemas.BookingCreate, 
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    if booking.start_time >= booking.end_time:
+        raise HTTPException(status_code=400, detail="Start time must be before end time")
+
+    overlap = db.query(models.Booking).filter(
+        models.Booking.court_id == booking.court_id,
+        models.Booking.status == "confirmed",
+        and_(
+            models.Booking.start_time < booking.end_time,
+            models.Booking.end_time > booking.start_time
+        )
+    ).first()
+
+    if overlap:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Court is already booked from {overlap.start_time} to {overlap.end_time}"
+        )
+
+    new_booking = models.Booking(
+        **booking.model_dump(),
+        user_id=current_user.id
+    )
+    db.add(new_booking)
+    db.commit()
+    db.refresh(new_booking)
+    return new_booking
+
+@app.get("/bookings/my", response_model=list[schemas.BookingOut])
+def get_my_bookings(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    if current_user.role == "admin":
+        return db.query(models.Booking).all()
+    return db.query(models.Booking).filter(models.Booking.user_id == current_user.id).all()
+
+@app.delete("/bookings/{booking_id}")
+def cancel_booking(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    booking = db.query(models.Booking).filter(models.Booking.id == booking_id).first()
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    
+    if booking.user_id != current_user.id and current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Not authorized to cancel this booking")
+
+    db.delete(booking)
+    db.commit()
+    return {"message": "Booking cancelled"}
 
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Sports Booking API")
-
 
 @app.post("/register", response_model=schemas.UserOut)
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
@@ -44,7 +103,7 @@ def list_courts(db: Session = Depends(get_db)):
 def create_court(
     court: schemas.CourtCreate, 
     db: Session = Depends(get_db),
-    admin: models.User = Depends(auth.check_admin) 
+    admin: models.User = Depends(auth.check_admin)
 ):
     new_court = models.Court(**court.model_dump())
     db.add(new_court)
